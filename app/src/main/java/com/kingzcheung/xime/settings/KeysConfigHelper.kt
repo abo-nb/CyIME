@@ -855,7 +855,8 @@ object KeysConfigHelper {
     /** Read a thumbnail without changing the active keyboard or its gesture state. */
     fun previewKeyRows(layout: InputLayout, language: InputLanguage): List<List<String>> =
         CustomKeyboardLayouts.find(layout.id)?.typingRows() ?: when {
-            layout.kind == LayoutKind.MERGED || layout.kind == LayoutKind.ZHUYIN -> _mergedRows[layout.id].orEmpty()
+            layout.kind == LayoutKind.MERGED || layout.kind == LayoutKind.ZHUYIN ||
+                layout.kind == LayoutKind.ZHUYIN_TEN -> _mergedRows[layout.id].orEmpty()
             // 有自己排列的字母键盘（西班牙语多一个 ñ）按它自己的行画。
             layout.kind == LayoutKind.ALPHABETIC -> _mergedRows[layout.id]
                 ?: if (language == InputLanguage.ENGLISH) _enRowsBase else _zhRowsBase

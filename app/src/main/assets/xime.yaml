@@ -377,6 +377,61 @@ keyboard:
       "'": { tap: { label: "，", value: "，" }, swipe_up: { label: "。", value: "。" } , long_press: { display: "bubble", values: [ "，", "。"] }}
       earth: { tap: { label: "@language", action: "toggle_ascii" }, long_press: { display: "bubble", values: [ { label: "选择输入法", action: "command", value: "show_ime_picker" } ] } }
 
+  # 注音（大千式，十列；对应方案 cyime_zhuyin_ten，默认不启用）：数字排同时是声调排，
+  # ㄦ 和删除键放在底排（KeyboardLayout 按 LayoutKind.ZHUYIN_TEN 排，空格旁多一个 ㄦ）。
+  # 键帽送注音符号，ImeKeyRouter 换成大千键码（ZhuyinKeys），编码与 cyime_zhuyin 相同。
+  # 数字排的上滑是同一键位的数字；其余键的角标只写电脑大千键盘上的字母，action: none 只显示不送字母。
+  zhuyin_ten:
+    schemas: [cyime_zhuyin_ten]
+    button_layout: standard
+    layout:
+      rows:
+        - [ㄅ, ㄉ, ˇ, ˋ, ㄓ, ˊ, ˙, ㄚ, ㄞ, ㄢ]
+        - [ㄆ, ㄊ, ㄍ, ㄐ, ㄔ, ㄗ, ㄧ, ㄛ, ㄟ, ㄣ]
+        - [ㄇ, ㄋ, ㄎ, ㄑ, ㄕ, ㄘ, ㄨ, ㄜ, ㄠ, ㄤ]
+        - [ㄈ, ㄌ, ㄏ, ㄒ, ㄖ, ㄙ, ㄩ, ㄝ, ㄡ, ㄥ]
+    keys:
+      ㄅ: { swipe_up: "1" }
+      ㄉ: { swipe_up: "2" }
+      ˇ: { swipe_up: "3" }
+      ˋ: { swipe_up: "4" }
+      ㄓ: { swipe_up: "5" }
+      ˊ: { swipe_up: "6" }
+      ˙: { swipe_up: "7" }
+      ㄚ: { swipe_up: "8" }
+      ㄞ: { swipe_up: "9" }
+      ㄢ: { swipe_up: "0" }
+      ㄆ: { swipe_up: { label: "q", action: none } }
+      ㄊ: { swipe_up: { label: "w", action: none } }
+      ㄍ: { swipe_up: { label: "e", action: none } }
+      ㄐ: { swipe_up: { label: "r", action: none } }
+      ㄔ: { swipe_up: { label: "t", action: none } }
+      ㄗ: { swipe_up: { label: "y", action: none } }
+      ㄧ: { swipe_up: { label: "u", action: none } }
+      ㄛ: { swipe_up: { label: "i", action: none } }
+      ㄟ: { swipe_up: { label: "o", action: none } }
+      ㄣ: { swipe_up: { label: "p", action: none } }
+      ㄇ: { swipe_up: { label: "a", action: none } }
+      ㄋ: { swipe_up: { label: "s", action: none } }
+      ㄎ: { swipe_up: { label: "d", action: none } }
+      ㄑ: { swipe_up: { label: "f", action: none } }
+      ㄕ: { swipe_up: { label: "g", action: none } }
+      ㄘ: { swipe_up: { label: "h", action: none } }
+      ㄨ: { swipe_up: { label: "j", action: none } }
+      ㄜ: { swipe_up: { label: "k", action: none } }
+      ㄠ: { swipe_up: { label: "l", action: none } }
+      ㄤ: { swipe_up: { label: ";", action: none } }
+      ㄈ: { swipe_up: { label: "z", action: none } }
+      ㄌ: { swipe_up: { label: "x", action: none } }
+      ㄏ: { swipe_up: { label: "c", action: none } }
+      ㄒ: { swipe_up: { label: "v", action: none } }
+      ㄖ: { swipe_up: { label: "b", action: none } }
+      ㄙ: { swipe_up: { label: "n", action: none } }
+      ㄩ: { swipe_up: { label: "m", action: none } }
+      ㄝ: { swipe_up: { label: ",", action: none } }
+      ㄡ: { swipe_up: { label: ".", action: none } }
+      ㄥ: { swipe_up: { label: "/", action: none } }
+
   # 仓颉五代（对应方案 cyime_cangjie，默认不启用）：同 26 键排列，键帽是仓颉字根，点按送字母码。
   # 字根同方案 preedit_format 的 xlit（z 在五仓里是符号码，键帽「符」）。上下角标同 26 键（QwertySwipeSymbols），这里不配。
   qwerty_cangjie:

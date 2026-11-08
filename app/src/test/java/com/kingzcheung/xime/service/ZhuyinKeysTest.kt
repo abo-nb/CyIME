@@ -26,10 +26,11 @@ class ZhuyinKeysTest {
     }
 
     private val schema by lazy { repoFile("src/main/assets/rime_chinese/cyime_zhuyin.schema.yaml").readText() }
+    private val tenSchema by lazy { repoFile("src/main/assets/rime_chinese/cyime_zhuyin_ten.schema.yaml").readText() }
 
     /** 方案 preedit_format 的 xlit：大千键码 → 屏上显示的注音符号。 */
-    private fun preeditMap(): Map<Char, Char> {
-        val (source, target) = Regex("""xlit\|([^|]+)\|([^|]+)\|""").find(schema.substringAfter("preedit_format:"))!!.destructured
+    private fun preeditMap(text: String = schema): Map<Char, Char> {
+        val (source, target) = Regex("""xlit\|([^|]+)\|([^|]+)\|""").find(text.substringAfter("preedit_format:"))!!.destructured
         assertEquals(source.length, target.length)
         return source.zip(target).toMap()
     }
@@ -76,5 +77,31 @@ class ZhuyinKeysTest {
         assertTrue(usesMergedLetterKeys(InputLayout.ZHUYIN))
         assertEquals("ㄋㄧˇㄏㄠˇ", rawCompositionCommitText("su3cl3", "ㄋㄧˇ ㄏㄠˇ", t9 = false,
             merged14 = usesMergedLetterKeys(InputLayout.ZHUYIN)))
+    }
+
+    @Test fun `every key cap of the ten-column layout types the same schema code`() {
+        val rows = KeysConfigHelper.parseKeyboardLayoutYamlText(repoFile("src/main/assets/xime.yaml").readText(), "zhuyin_ten")
+            ?: error("xime.yaml 缺少 zhuyin_ten rows")
+        assertEquals(listOf(10, 10, 10, 10), rows.map { it.size })
+        val alphabet = Regex("""alphabet: "([^"]+)"""").find(tenSchema)!!.groupValues[1]
+        val shown = preeditMap(tenSchema)
+        val keys = rows.flatten()
+        // ㄦ 在底排（KeyboardLayout 单独排），四行剩下 37 个注音符号去掉 ㄦ、加 4 个声调。
+        assertEquals(40, keys.toSet().size)
+        for (key in keys) {
+            val code = ZhuyinKeys.code(key) ?: error("$key has no 大千 code")
+            assertTrue("$key → $code not in the speller alphabet", code in alphabet)
+            assertEquals("$key → $code", key.single(), shown[code])
+        }
+    }
+
+    @Test fun `cyime_zhuyin_ten is the same zhuyin scheme on the ten-column layout`() {
+        val profile = InputProfiles.describe("cyime_zhuyin_ten")
+        assertEquals(InputLanguage.CHINESE, profile.language)
+        assertEquals(InputScheme.ZHUYIN, profile.scheme)
+        assertEquals(InputLayout.ZHUYIN_TEN, profile.layout)
+        assertFalse("注音没有拼音编辑", profile.capabilities.editablePinyin)
+        assertEquals(LayoutKind.ZHUYIN_TEN, InputProfiles.resolveLayout("zhuyin_ten").kind)
+        assertTrue(usesMergedLetterKeys(InputLayout.ZHUYIN_TEN))
     }
 }

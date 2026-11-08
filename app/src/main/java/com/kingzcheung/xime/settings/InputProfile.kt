@@ -32,8 +32,11 @@ enum class InputScheme(val id: String, val displayName: String) {
 }
 
 enum class InputMode { KEYBOARD, HANDWRITING, VOICE }
-/** ZHUYIN：大千式注音键盘，键帽是注音符号（11 列 4 行），不是字母键。 */
-enum class LayoutKind { ALPHABETIC, T9, MERGED, KANA_KEYPAD, STROKE_KEYPAD, HANDWRITING, NUMBER, ZHUYIN }
+/**
+ * ZHUYIN：大千式注音键盘，键帽是注音符号（11 列 4 行），不是字母键。
+ * ZHUYIN_TEN：同为注音符号键帽，但排成十列四行，ㄦ 和删除键放在底排（见 [InputLayout.ZHUYIN_TEN]）。
+ */
+enum class LayoutKind { ALPHABETIC, T9, MERGED, KANA_KEYPAD, STROKE_KEYPAD, HANDWRITING, NUMBER, ZHUYIN, ZHUYIN_TEN }
 
 data class InputLayout(val id: String, val displayName: String, val kind: LayoutKind) {
     companion object {
@@ -45,6 +48,8 @@ data class InputLayout(val id: String, val displayName: String, val kind: Layout
         val HANDWRITING = InputLayout("handwriting", "手写板", LayoutKind.HANDWRITING)
         val NUMBER = InputLayout("number", "数字键盘", LayoutKind.NUMBER)
         val ZHUYIN = InputLayout("zhuyin", "大千", LayoutKind.ZHUYIN)
+        /** 十列大千：数字行做声调行，ㄦ 和删除键在底排，字母写在角标上。 */
+        val ZHUYIN_TEN = InputLayout("zhuyin_ten", "大千·十列", LayoutKind.ZHUYIN_TEN)
     }
 }
 
@@ -145,7 +150,7 @@ object InputProfiles {
             id == "stroke" -> InputScheme.STROKE
             id == "japanese" || id == "jaroomaji" -> InputScheme.ROMAJI
             id == "japanese_kana" -> InputScheme.KANA
-            id == "cyime_zhuyin" -> InputScheme.ZHUYIN
+            id == "cyime_zhuyin" || id == "cyime_zhuyin_ten" -> InputScheme.ZHUYIN
             id == "cyime_cangjie" || id == "cyime_quick" -> InputScheme.CANGJIE
             else -> InputScheme.EXTERNAL
         }
@@ -167,6 +172,7 @@ object InputProfiles {
             id == "handwriting" -> InputLayout.HANDWRITING
             id == "numbers" -> InputLayout.NUMBER
             id == "cyime_zhuyin" -> InputLayout.ZHUYIN
+            id == "cyime_zhuyin_ten" -> InputLayout.ZHUYIN_TEN
             else -> InputLayout.QWERTY
         }
         return InputProfile(inputLanguage, inputScheme, layout,
@@ -196,6 +202,7 @@ object InputProfiles {
         "handwriting" -> InputLayout.HANDWRITING
         "japanese_kana" -> InputLayout.KANA
         "zhuyin" -> InputLayout.ZHUYIN
+        "zhuyin_ten" -> InputLayout.ZHUYIN_TEN
         else -> if (custom != null) customLayout(custom) else when (section) {
             null -> InputLayout.QWERTY
             "qwerty_14" -> InputLayout.MERGED14

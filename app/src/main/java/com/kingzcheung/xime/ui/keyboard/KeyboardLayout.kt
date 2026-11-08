@@ -182,7 +182,12 @@ fun KeyboardLayout(
         androidx.compose.runtime.derivedStateOf { awaitsDoublePinyinFinal(candidateState.value.inputText) }
     } else null
     // 注音（大千）：11 列，下面三行 10 键缩进半键，没有 Shift，删除键在第四行末尾。
-    val zhuyin = !isAsciiMode && uiState.inputProfile.layout.kind == com.kingzcheung.xime.settings.LayoutKind.ZHUYIN
+    // 十列大千：四行都是 10 键，ㄦ 和删除键在底排（没有第 11 列可放删除键）。
+    val zhuyin = !isAsciiMode && uiState.inputProfile.layout.kind in setOf(
+        com.kingzcheung.xime.settings.LayoutKind.ZHUYIN,
+        com.kingzcheung.xime.settings.LayoutKind.ZHUYIN_TEN)
+    val zhuyinTen = !isAsciiMode &&
+        uiState.inputProfile.layout.kind == com.kingzcheung.xime.settings.LayoutKind.ZHUYIN_TEN
     // 数字行（默认关）：字母上方一排，键和顺序在「按键符号 → 数字行」里改；注音不加（见 [numberRowShown]）。
     val numberRowPrefs = LocalKeyboardInputPreferences.current
     val numberKeys = remember(numberRowPrefs.numberRow, zhuyin, numberRowPrefs.sideSymbols) {
@@ -706,7 +711,10 @@ fun KeyboardLayout(
                     } else {
                         Box(modifier = Modifier.weight(1f)) {
                             val row1 = renderRows.getOrElse(1) { listOf("a", "s", "d", "f", "g", "h", "j", "k", "l") }
-                            val row1Inset = if (zhuyin) (splitCellDp / 2f).dp else standardRowInset
+                            // 注音按首行（11 列或十列）比这一行多出的格子两边均分；十列时就是 0。
+                            val zhuyinInset = (splitCellDp * ((letterKeyboardColumns(keyRows, fourteenKey) - row1.size)
+                                .coerceAtLeast(0f) / 2f)).dp
+                            val row1Inset = if (zhuyin) zhuyinInset else standardRowInset
                                 ?: if ((if (LocalCustomLayout.current != null) row1.sumOf { it.length } else row1.size) > 9) 0.dp else 16.dp
                             KeyboardRowWithConfig(
                                 keys = row1,
@@ -763,10 +771,11 @@ fun KeyboardLayout(
                             )
                         }
                     } else if (zhuyin) {
-                        // 注音第三行同第二行：10 键缩进半键，没有 Shift 和删除键。
+                        // 注音第三行同第二行：比首行少的格子两边均分（大千缩进半键，十列不缩进），没有 Shift。
+                        val row2 = renderRows.getOrNull(2).orEmpty()
                         Box(modifier = Modifier.weight(1f)) {
                             KeyboardRowWithConfig(
-                                keys = renderRows.getOrNull(2).orEmpty(),
+                                keys = row2,
                                 onKeyPress = onKeyPress,
                                 config = KeyboardRowConfig(
                                     keyBackgroundColor = keyBackgroundColor,
@@ -778,7 +787,8 @@ fun KeyboardLayout(
                                 ),
                                 isShifted = false,
                                 isAsciiMode = isAsciiMode,
-                                edgeInset = (splitCellDp / 2f).dp,
+                                edgeInset = (splitCellDp * ((letterKeyboardColumns(keyRows, fourteenKey) - row2.size)
+                                    .coerceAtLeast(0f) / 2f)).dp,
                                 onSwipeStateChange = { state, bounds -> processSwipeState(state, bounds) },
                                 onKeyPressDown = onKeyPressDown,
                                 onKeyRelease = onKeyRelease,
@@ -997,18 +1007,21 @@ fun KeyboardLayout(
                                 onGestureAction = onGestureAction,
                                 configVersion = cfgVer,
                             )
-                            if (zhuyin && !(isVoiceMode && !isVoiceSticky)) deleteKey(Modifier.weight(1f))
+                            // 十列注音没有第 11 列，删除键在底排。
+                            if (zhuyin && !zhuyinTen && !(isVoiceMode && !isVoiceSticky)) deleteKey(Modifier.weight(1f))
                         }
                         Spacer(Modifier.height(honeycombOverhang))
                     }
 
                     // 底排保留共用权重及逗号/地球等宽；宽屏实体字母错位不移动底排。
-                    // 注音的底排同 26 键的比例（首行 11 键不是旧式布局）。
-                    val bottom = letterKeyboardBottomRow(keyRows, fourteenKey || zhuyin)
+                    // 注音的底排同 26 键的比例（首行 11 键不是旧式布局）；十列另加 ㄦ 和删除键。
+                    val bottom = if (zhuyinTen) QwertyBottomRowWeights.ZhuyinTen
+                        else letterKeyboardBottomRow(keyRows, fourteenKey || zhuyin)
                     // 空格左侧逗号、右侧句号；只开逗号时沿用原配置的逗号键。
+                    // 十列只在空格左边留一个标点键（句号放在它上滑），右边留给 ㄦ 和删除键。
                     val bottomPrefs = LocalKeyboardInputPreferences.current
-                    val commaOnLeft = bottomPrefs.qwertyCommaKey
-                    val periodOnRight = bottomPrefs.qwertyPeriodKey
+                    val commaOnLeft = if (zhuyinTen) true else bottomPrefs.qwertyCommaKey
+                    val periodOnRight = if (zhuyinTen) false else bottomPrefs.qwertyPeriodKey
                     val punctuationFull = LocalKeyboardPunctuation.current?.full ?: !isAsciiMode
                     val (leftPunctuation, rightPunctuation) = spacePunctuationKeys(commaOnLeft, periodOnRight,
                         punctuationFull, english = isAsciiMode,
@@ -1198,6 +1211,32 @@ fun KeyboardLayout(
                             }
                         }
 
+                        // 十列注音：地球／语言键紧挨空格左边（其余布局仍排在回车前）。
+                        if (zhuyinTen) {
+                            if (isVoiceMode && !isVoiceSticky) {
+                                DummyKeyButton(
+                                    backgroundColor = keyBackgroundColor.copy(alpha = 0.5f),
+                                    modifier = Modifier.weight(bottom.language)
+                                )
+                            } else {
+                                EarthLanguageKey(
+                                    languageWeight = bottom.language,
+                                    isAsciiMode = isAsciiMode,
+                                    specialKeyBackgroundColor = specialKeyBackgroundColor,
+                                    specialKeyTextColor = specialKeyTextColor,
+                                    shadowEnabled = shadowEnabled,
+                                    shadowElevation = shadowElevation,
+                                    shadowShapeRadius = shadowShapeRadius,
+                                    onKeyPress = onKeyPress,
+                                    onKeyPressDown = onKeyPressDown,
+                                    onKeyRelease = onKeyRelease,
+                                    onGestureAction = onGestureAction,
+                                    onCommitText = onCommitText,
+                                    processSwipeState = { state, bounds -> processSwipeState(state, bounds) },
+                                )
+                            }
+                        }
+
                         // 分体时空格在中线处分成左右两块，两块都是完整的空格键。
                         val spaceParts = if (splitKeyboard) SplitKeyboardGeometry.spaceSplit(bottom, bottomSpaceWeight,
                             bottom.mode * 2f + if (commaOnLeft) bottom.punctuation else 0f).toList()
@@ -1215,12 +1254,43 @@ fun KeyboardLayout(
                                 shadowEnabled = shadowEnabled,
                                 shadowElevation = shadowElevation,
                                 shadowShapeRadius = shadowShapeRadius,
-                                modifier = Modifier.weight(spaceWeight),
+                                modifier = Modifier.weight(spaceWeight)
+                                    .then(if (part == 0) Modifier.testTag("qwerty-space-key") else Modifier),
                                 onKeyPress = onKeyPress,
                                 onKeyPressDown = onKeyPressDown,
                                 onKeyRelease = onKeyRelease,
                                 onVoiceModeChange = onVoiceModeChange,
                             )
+                        }
+
+                        // 十列注音：ㄦ 和删除键在空格右侧，删除键不再占第四行末尾。
+                        if (zhuyinTen) {
+                            if (isVoiceMode && !isVoiceSticky) {
+                                DummyKeyButton(
+                                    backgroundColor = keyBackgroundColor.copy(alpha = 0.5f),
+                                    modifier = Modifier.weight(ZHUYIN_TEN_ER_WEIGHT)
+                                )
+                                DummyKeyButton(
+                                    backgroundColor = specialKeyBackgroundColor.copy(alpha = 0.5f),
+                                    modifier = Modifier.weight(ZHUYIN_TEN_DELETE_WEIGHT)
+                                )
+                            } else {
+                                SwipeableKeyButton(
+                                    layoutMode = KeysConfigHelper.getButtonLayout(isAsciiMode),
+                                    text = "ㄦ",
+                                    onClick = { onKeyPress("ㄦ") },
+                                    backgroundColor = keyBackgroundColor,
+                                    textColor = keyTextColor,
+                                    modifier = Modifier.weight(ZHUYIN_TEN_ER_WEIGHT)
+                                        .testTag("zhuyin-er-key").semantics { contentDescription = "ㄦ" },
+                                    onPress = { onKeyPressDown?.invoke("ㄦ") },
+                                    onRelease = { onKeyRelease?.invoke("ㄦ") },
+                                    shadowEnabled = shadowEnabled,
+                                    shadowElevation = shadowElevation,
+                                    shadowShapeRadius = shadowShapeRadius,
+                                )
+                                deleteKey(Modifier.weight(ZHUYIN_TEN_DELETE_WEIGHT))
+                            }
                         }
 
                         if (rightPunctuation != null) {
@@ -1232,7 +1302,8 @@ fun KeyboardLayout(
 
                         // 中/英切换 + 回车（硬编码 + 配置驱动）
                         if (isVoiceMode && !isVoiceSticky) {
-                            DummyKeyButton(
+                            // 十列注音的语言键已挪到空格左边。
+                            if (!zhuyinTen) DummyKeyButton(
                                 backgroundColor = keyBackgroundColor.copy(alpha = 0.5f),
                                 modifier = Modifier.weight(bottom.language)
                             )
@@ -1241,125 +1312,22 @@ fun KeyboardLayout(
                                 modifier = Modifier.weight(bottom.enter)
                             )
                         } else {
-                            // earth — 从配置读取
-                            val k4KeyGesture = KeysConfigHelper.getKeyGesture("earth", isAsciiMode)
-                            val k4TapAction = k4KeyGesture?.tap?.action
-                            // 无 tap 手势配置时回退地球键默认语义：地球图标 + 中英切换。
-                            // 否则键面空白（label=""/icon=null）且点击发出空键值——空键值在
-                            // 中文模式会触发 ImeKeyRouter lowercase()[0] 越界崩溃（2026-09-14 实证）。
-                            val isEarthDefaultTap = k4KeyGesture?.tap == null
-                            val k4TapValue = k4KeyGesture?.tap?.value?.takeIf { it.isNotEmpty() } ?: "ime_switch"
-                            val k4TapLabel = k4KeyGesture?.tap?.label?.takeIf { it.isNotEmpty() } ?: "中"
-                            val k4Icon: Painter? = k4KeyGesture?.tap?.icon?.takeIf { it.isNotEmpty() }?.let { iconName ->
-                                val iv = when (iconName) {
-                                    "language", "globe" -> Icons.Default.Language
-                                    else -> null
-                                }
-                                iv?.let { rememberVectorPainter(it) }
-                            } ?: if (isEarthDefaultTap) rememberVectorPainter(Icons.Default.Language) else null
-                            val k4SwipeUpRaw = k4KeyGesture?.swipeUp
-                            val k4SwipeUpLabel = if (isAsciiMode)
-                                (k4SwipeUpRaw?.value?.takeIf { it.isNotEmpty() } ?: "")
-                                else (k4SwipeUpRaw?.label?.takeIf { it.isNotEmpty() } ?: k4SwipeUpRaw?.value?.takeIf { it.isNotEmpty() } ?: "")
-                            val k4SwipeUpValue = k4SwipeUpRaw?.value?.takeIf { it.isNotEmpty() }
-                                ?: k4SwipeUpRaw?.label?.takeIf { it.isNotEmpty() }
-                            val k4SwipeUpAction = k4SwipeUpRaw?.action
-                            val k4SwipeDownRaw = k4KeyGesture?.swipeDown
-                            val k4SwipeDownLabel = k4SwipeDownRaw?.label?.takeIf { it.isNotEmpty() }
-                            val k4SwipeDownAction = k4SwipeDownRaw?.action
-                            val k4SwipeDownValue = k4SwipeDownRaw?.value
-                            val k4SwipeDownDisplay = k4SwipeDownRaw?.display ?: DisplayMode.BOTH
-                            val k4SwipeDownBubbleText = if (k4SwipeDownDisplay != DisplayMode.KEY) k4SwipeDownLabel else null
-                            val k4LongPressConfig = k4KeyGesture?.longPress
-                            val k4LongPressDisplay = k4LongPressConfig?.display ?: "key"
-                            val k4LongPressLabels = if (k4LongPressDisplay == "bubble") {
-                                k4LongPressConfig?.values?.map { it.label }?.filter { it.isNotEmpty() }
-                                    ?.ifEmpty { null }
-                            } else null
-                            val k4LongPressGestureMap = if (k4LongPressDisplay == "bubble") {
-                                k4LongPressConfig?.values?.associateBy { it.label }
-                            } else null
-                            val k4OnClick: () -> Unit = remember(k4TapAction, k4TapValue, onKeyPress, onGestureAction) {
-                                {
-                                    if (k4TapAction != null && k4TapAction != GestureAction.COMMIT) {
-                                        onGestureAction?.invoke(k4TapAction, k4TapValue)
-                                    } else {
-                                        onKeyPress(k4TapValue)
-                                    }
-                                }
-                            }
-                            val k4OnSwipe: ((String) -> Unit)? = if (k4SwipeUpValue != null && k4SwipeUpAction != GestureAction.NONE) {
-                                remember(k4SwipeUpValue, onKeyPress) { { onKeyPress(k4SwipeUpValue) } }
-                            } else null
-                            val k4OnSwipeDown: ((String) -> Unit)? = if (k4SwipeDownAction != null && k4SwipeDownLabel != null) {
-                                remember(k4SwipeDownAction, k4SwipeDownValue, k4SwipeDownLabel, onKeyPress, onGestureAction, onCommitText) {
-                                    val label = k4SwipeDownLabel
-                                    { _: String ->
-                                        if (k4SwipeDownAction == GestureAction.COMMIT) {
-                                            (onCommitText ?: onKeyPress)(k4SwipeDownValue?.ifEmpty { label } ?: label)
-                                        } else {
-                                            onGestureAction.invoke(k4SwipeDownAction, k4SwipeDownValue?.ifEmpty { label } ?: label)
-                                        }
-                                        Unit
-                                    }
-                                }
-                            } else null
-                            val k4OnLongPressSelect: ((String) -> Unit)? = remember(k4LongPressGestureMap, onGestureAction, onCommitText, onKeyPress) {
-                                { selectedLabel: String ->
-                                    val gesture = k4LongPressGestureMap?.get(selectedLabel)
-                                    if (gesture != null && gesture.action != GestureAction.COMMIT) {
-                                        onGestureAction.invoke(gesture.action!!, gesture.value.ifEmpty { selectedLabel })
-                                    } else {
-                                        commitLongPressChoice(selectedLabel, onCommitText, onKeyPress)
-                                    }
-                                    Unit
-                                }
-                            }
-                            if ((k4TapAction == GestureAction.TOGGLE_ASCII && k4Icon != null || isEarthDefaultTap) && k4LongPressLabels == null) {
-                                LanguageKeyButton(
-                                    icon = k4Icon ?: rememberVectorPainter(Icons.Default.Language),
-                                    onClick = k4OnClick,
-                                    backgroundColor = specialKeyBackgroundColor,
-                                    iconColor = specialKeyTextColor,
-                                    modifier = Modifier.weight(bottom.language),
-                                    onPress = { onKeyPressDown?.invoke(k4TapValue) },
-                                    onRelease = { onKeyRelease?.invoke(k4TapValue) },
-                                    swipeText = k4SwipeUpLabel.takeIf { it.isNotEmpty() },
-                                    swipeDownText = k4SwipeDownBubbleText,
-                                    swipeDownKeyLabel = if (k4SwipeDownDisplay != DisplayMode.BUBBLE) k4SwipeDownLabel else null,
-                                    onSwipe = k4OnSwipe,
-                                    onSwipeDown = k4OnSwipeDown,
-                                    onSwipeStateChange = { state, bounds -> processSwipeState(state, bounds) },
-                                    shadowEnabled = shadowEnabled,
-                                    shadowElevation = shadowElevation,
-                                    shadowShapeRadius = shadowShapeRadius,
-                                )
-                            } else {
-                                LanguageKeyButton(
-                                    layoutMode = KeysConfigHelper.getButtonLayout(isAsciiMode),
-                                    text = k4TapLabel,
-                                    onClick = k4OnClick,
-                                    backgroundColor = specialKeyBackgroundColor,
-                                    textColor = specialKeyTextColor,
-                                    modifier = Modifier.weight(bottom.language),
-                                    icon = k4Icon,
-                                    swipeText = k4SwipeUpLabel.takeIf { it.isNotEmpty() },
-                                    swipeDownText = k4SwipeDownBubbleText,
-                                    swipeDownKeyLabel = if ((k4SwipeDownDisplay == DisplayMode.KEY || k4SwipeDownDisplay == DisplayMode.BOTH)) k4SwipeDownLabel else null,
-                                    onSwipe = k4OnSwipe,
-                                    onSwipeDown = k4OnSwipeDown,
-                                    onSwipeStateChange = { state, bounds ->
-                                        processSwipeState(state, bounds)
-                                    },
-                                    onPress = { onKeyPressDown?.invoke(k4TapValue) },
-                                    onRelease = { onKeyRelease?.invoke(k4TapValue) },
-                                    onLongPressSelect = k4OnLongPressSelect,
-                                    longPressItems = k4LongPressLabels,
-                                    shadowEnabled = shadowEnabled,
-                                    shadowElevation = shadowElevation,
-                                    shadowShapeRadius = shadowShapeRadius,
-                                )
-                            }
+                            // 十列注音的语言键已挪到空格左边。
+                            if (!zhuyinTen) EarthLanguageKey(
+                                languageWeight = bottom.language,
+                                isAsciiMode = isAsciiMode,
+                                specialKeyBackgroundColor = specialKeyBackgroundColor,
+                                specialKeyTextColor = specialKeyTextColor,
+                                shadowEnabled = shadowEnabled,
+                                shadowElevation = shadowElevation,
+                                shadowShapeRadius = shadowShapeRadius,
+                                onKeyPress = onKeyPress,
+                                onKeyPressDown = onKeyPressDown,
+                                onKeyRelease = onKeyRelease,
+                                onGestureAction = onGestureAction,
+                                onCommitText = onCommitText,
+                                processSwipeState = { state, bounds -> processSwipeState(state, bounds) },
+                            )
 
                             // 回车 — 硬编码。按住 !@# 时另一根手指点回车、或从 !@# 拖到回车上松手：Ctrl+回车，发送（用户 11-03）。
                             // 按住 Shift 点回车、或从 Shift 拖到回车上松手：Shift+回车，换行（用户 11-04）。
@@ -1424,6 +1392,147 @@ fun KeyboardLayout(
     }
     }
     }
+    }
+}
+
+/**
+ * 底排地球／语言键：点按切中英、长按选语言；图标、角标、滑动和长按都按配置渲染。
+ * 十列注音把它排在空格左边，其余布局仍在回车前。
+ */
+@Composable
+private fun RowScope.EarthLanguageKey(
+    languageWeight: Float,
+    isAsciiMode: Boolean,
+    specialKeyBackgroundColor: Color,
+    specialKeyTextColor: Color,
+    shadowEnabled: Boolean,
+    shadowElevation: Dp,
+    shadowShapeRadius: Dp,
+    onKeyPress: (String) -> Unit,
+    onKeyPressDown: ((String) -> Unit)?,
+    onKeyRelease: ((String) -> Unit)?,
+    onGestureAction: (GestureAction, String) -> Unit,
+    onCommitText: ((String) -> Unit)?,
+    processSwipeState: (SwipeState, Rect) -> Unit,
+) {
+    // earth — 从配置读取
+    val k4KeyGesture = KeysConfigHelper.getKeyGesture("earth", isAsciiMode)
+    val k4TapAction = k4KeyGesture?.tap?.action
+    // 无 tap 手势配置时回退地球键默认语义：地球图标 + 中英切换。
+    // 否则键面空白（label=""/icon=null）且点击发出空键值——空键值在
+    // 中文模式会触发 ImeKeyRouter lowercase()[0] 越界崩溃（2026-09-14 实证）。
+    val isEarthDefaultTap = k4KeyGesture?.tap == null
+    val k4TapValue = k4KeyGesture?.tap?.value?.takeIf { it.isNotEmpty() } ?: "ime_switch"
+    val k4TapLabel = k4KeyGesture?.tap?.label?.takeIf { it.isNotEmpty() } ?: "中"
+    val k4Icon: Painter? = k4KeyGesture?.tap?.icon?.takeIf { it.isNotEmpty() }?.let { iconName ->
+        val iv = when (iconName) {
+            "language", "globe" -> Icons.Default.Language
+            else -> null
+        }
+        iv?.let { rememberVectorPainter(it) }
+    } ?: if (isEarthDefaultTap) rememberVectorPainter(Icons.Default.Language) else null
+    val k4SwipeUpRaw = k4KeyGesture?.swipeUp
+    val k4SwipeUpLabel = if (isAsciiMode)
+        (k4SwipeUpRaw?.value?.takeIf { it.isNotEmpty() } ?: "")
+        else (k4SwipeUpRaw?.label?.takeIf { it.isNotEmpty() } ?: k4SwipeUpRaw?.value?.takeIf { it.isNotEmpty() } ?: "")
+    val k4SwipeUpValue = k4SwipeUpRaw?.value?.takeIf { it.isNotEmpty() }
+        ?: k4SwipeUpRaw?.label?.takeIf { it.isNotEmpty() }
+    val k4SwipeUpAction = k4SwipeUpRaw?.action
+    val k4SwipeDownRaw = k4KeyGesture?.swipeDown
+    val k4SwipeDownLabel = k4SwipeDownRaw?.label?.takeIf { it.isNotEmpty() }
+    val k4SwipeDownAction = k4SwipeDownRaw?.action
+    val k4SwipeDownValue = k4SwipeDownRaw?.value
+    val k4SwipeDownDisplay = k4SwipeDownRaw?.display ?: DisplayMode.BOTH
+    val k4SwipeDownBubbleText = if (k4SwipeDownDisplay != DisplayMode.KEY) k4SwipeDownLabel else null
+    val k4LongPressConfig = k4KeyGesture?.longPress
+    val k4LongPressDisplay = k4LongPressConfig?.display ?: "key"
+    val k4LongPressLabels = if (k4LongPressDisplay == "bubble") {
+        k4LongPressConfig?.values?.map { it.label }?.filter { it.isNotEmpty() }
+            ?.ifEmpty { null }
+    } else null
+    val k4LongPressGestureMap = if (k4LongPressDisplay == "bubble") {
+        k4LongPressConfig?.values?.associateBy { it.label }
+    } else null
+    val k4OnClick: () -> Unit = remember(k4TapAction, k4TapValue, onKeyPress, onGestureAction) {
+        {
+            if (k4TapAction != null && k4TapAction != GestureAction.COMMIT) {
+                onGestureAction?.invoke(k4TapAction, k4TapValue)
+            } else {
+                onKeyPress(k4TapValue)
+            }
+        }
+    }
+    val k4OnSwipe: ((String) -> Unit)? = if (k4SwipeUpValue != null && k4SwipeUpAction != GestureAction.NONE) {
+        remember(k4SwipeUpValue, onKeyPress) { { onKeyPress(k4SwipeUpValue) } }
+    } else null
+    val k4OnSwipeDown: ((String) -> Unit)? = if (k4SwipeDownAction != null && k4SwipeDownLabel != null) {
+        remember(k4SwipeDownAction, k4SwipeDownValue, k4SwipeDownLabel, onKeyPress, onGestureAction, onCommitText) {
+            val label = k4SwipeDownLabel
+            { _: String ->
+                if (k4SwipeDownAction == GestureAction.COMMIT) {
+                    (onCommitText ?: onKeyPress)(k4SwipeDownValue?.ifEmpty { label } ?: label)
+                } else {
+                    onGestureAction.invoke(k4SwipeDownAction, k4SwipeDownValue?.ifEmpty { label } ?: label)
+                }
+                Unit
+            }
+        }
+    } else null
+    val k4OnLongPressSelect: ((String) -> Unit)? = remember(k4LongPressGestureMap, onGestureAction, onCommitText, onKeyPress) {
+        { selectedLabel: String ->
+            val gesture = k4LongPressGestureMap?.get(selectedLabel)
+            if (gesture != null && gesture.action != GestureAction.COMMIT) {
+                onGestureAction.invoke(gesture.action!!, gesture.value.ifEmpty { selectedLabel })
+            } else {
+                commitLongPressChoice(selectedLabel, onCommitText, onKeyPress)
+            }
+            Unit
+        }
+    }
+    if ((k4TapAction == GestureAction.TOGGLE_ASCII && k4Icon != null || isEarthDefaultTap) && k4LongPressLabels == null) {
+        LanguageKeyButton(
+            icon = k4Icon ?: rememberVectorPainter(Icons.Default.Language),
+            onClick = k4OnClick,
+            backgroundColor = specialKeyBackgroundColor,
+            iconColor = specialKeyTextColor,
+            modifier = Modifier.weight(languageWeight).testTag("qwerty-language-key"),
+            onPress = { onKeyPressDown?.invoke(k4TapValue) },
+            onRelease = { onKeyRelease?.invoke(k4TapValue) },
+            swipeText = k4SwipeUpLabel.takeIf { it.isNotEmpty() },
+            swipeDownText = k4SwipeDownBubbleText,
+            swipeDownKeyLabel = if (k4SwipeDownDisplay != DisplayMode.BUBBLE) k4SwipeDownLabel else null,
+            onSwipe = k4OnSwipe,
+            onSwipeDown = k4OnSwipeDown,
+            onSwipeStateChange = { state, bounds -> processSwipeState(state, bounds) },
+            shadowEnabled = shadowEnabled,
+            shadowElevation = shadowElevation,
+            shadowShapeRadius = shadowShapeRadius,
+        )
+    } else {
+        LanguageKeyButton(
+            layoutMode = KeysConfigHelper.getButtonLayout(isAsciiMode),
+            text = k4TapLabel,
+            onClick = k4OnClick,
+            backgroundColor = specialKeyBackgroundColor,
+            textColor = specialKeyTextColor,
+            modifier = Modifier.weight(languageWeight).testTag("qwerty-language-key"),
+            icon = k4Icon,
+            swipeText = k4SwipeUpLabel.takeIf { it.isNotEmpty() },
+            swipeDownText = k4SwipeDownBubbleText,
+            swipeDownKeyLabel = if ((k4SwipeDownDisplay == DisplayMode.KEY || k4SwipeDownDisplay == DisplayMode.BOTH)) k4SwipeDownLabel else null,
+            onSwipe = k4OnSwipe,
+            onSwipeDown = k4OnSwipeDown,
+            onSwipeStateChange = { state, bounds ->
+                processSwipeState(state, bounds)
+            },
+            onPress = { onKeyPressDown?.invoke(k4TapValue) },
+            onRelease = { onKeyRelease?.invoke(k4TapValue) },
+            onLongPressSelect = k4OnLongPressSelect,
+            longPressItems = k4LongPressLabels,
+            shadowEnabled = shadowEnabled,
+            shadowElevation = shadowElevation,
+            shadowShapeRadius = shadowShapeRadius,
+        )
     }
 }
 
