@@ -46,10 +46,12 @@ engine:
   translators:
     - punct_translator
     - script_translator
-  # 先转正体再过候选规则：长按删掉的是屏上的正体字，按它来藏。声调表是正体字，排在转换之后。
+  # 注音常驻简体：先转正体对齐声调表（表来自小麦注音，是正体字），排好声调再统一转简体上屏。
+  # 长按删掉的是屏上的简体字，cyime_candidate_policy 排在第二次转换之后。
   filters:
     - simplifier@zh_tw
     - lua_filter@*cyime_zhuyin_tone
+    - simplifier@zh_simp
     - cyime_candidate_policy
     - uniquifier
 
@@ -125,6 +127,12 @@ t9:
 zh_tw:
   option_name: zh_tw
   opencc_config: cyime_s2tw.json
+  tips: none
+
+# 注音固定出简体：上面先转正体（声调表是正体字），这里再转回简体。同一个 zh_tw 开关，两个一起开关。
+zh_simp:
+  option_name: zh_tw
+  opencc_config: cyime_t2s.json
   tips: none
 
 menu:
