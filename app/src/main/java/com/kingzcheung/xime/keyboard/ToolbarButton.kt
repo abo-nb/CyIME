@@ -66,7 +66,8 @@ enum class ToolbarButton(
 
     companion object {
         // 仅在用户还没有保存工具栏偏好时使用，保留已有选择及顺序。
-        val DEFAULT_VISIBLE = linkedSetOf(SCHEMA, EMOJI, EDIT, CLIPBOARD, HANDWRITING_LOOKUP, VOICE)
+        // 简繁一键切换默认放工具栏（用户 2026-11-09 要求）；它只在拼音、双拼、仓颉键盘出现，注音常驻简体。
+        val DEFAULT_VISIBLE = linkedSetOf(SCHEMA, EMOJI, EDIT, CLIPBOARD, HANDWRITING_LOOKUP, VOICE, TRADITIONAL)
 
         /** 菜单默认一页 8 项（另加末尾的“排列”）：只放打字时会临时调整的入口，其余可在“排列”中加入。 */
         // 字幕不在这份清单里：它是「字幕」插件的按钮，插件装上并启用时才放进菜单（CaptionPlugin）。
