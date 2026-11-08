@@ -132,8 +132,15 @@ object RimeConfigHelper {
             return recordProblem(context, "部署失败：输入引擎没有建好会话" + storageHint(context), usable = false)
         val available = engine.getAvailableSchemas().toSet()
         val build = File(context.filesDir, "rime/build")
+        val listedOnDisk = deployedSchemaList(build)
         val broken = enabled.mapNotNull { id ->
-            (missingBuildArtifact(build, id) ?: if (id !in available) "不在部署结果的方案列表里" else null)?.let { id to it }
+            val artifact = missingBuildArtifact(build, id)
+            if (artifact == null && id !in available && id in listedOnDisk) {
+                // 刚部署完，引擎的可用列表可能还没刷新：2026-11-09 用户机上注音十列已经编好
+                // （方案、词库表、拼写索引都在），引擎却没列出来，当前方案被换回 26 键。
+                FileLogger.w(TAG, "Scheme $id is listed in build/default.yaml but not in the live schema list yet")
+            }
+            missingSchemaReason(build, id, available, listedOnDisk)?.let { id to it }
         }.toMap()
         if (broken.isEmpty()) return recordProblem(context, "", usable = true)
         val current = SettingsPreferences.getCurrentSchema(context)
@@ -468,6 +475,34 @@ object RimeConfigHelper {
         return listOf(File(build, "$dictionary.table.bin"), File(build, "$prism.prism.bin"))
             .firstOrNull { !it.isFile || isBrokenBuildArtifact(it) }?.let { "缺少 ${it.name}" }
     }
+
+    /**
+     * 部署产物里写下的方案列表（build/default.yaml 的 schema_list）。部署刚结束时引擎的可用列表
+     * 未必已经刷新，用它区分「这次没编出来」和「编好了但引擎还没认」。
+     */
+    internal fun deployedSchemaList(build: File): Set<String> {
+        val file = File(build, "default.yaml")
+        if (!file.isFile) return emptySet()
+        return runCatching {
+            val ids = mutableSetOf<String>()
+            var inList = false
+            file.forEachLine { raw ->
+                val line = raw.trimEnd()
+                when {
+                    !inList && line.trim() == "schema_list:" -> inList = true
+                    inList && line.isNotBlank() && !line.first().isWhitespace() -> inList = false
+                    inList -> Regex("""^-\s*schema:\s*["']?([^"'\s#]+)""").find(line.trim())
+                        ?.let { ids += it.groupValues[1] }
+                }
+            }
+            ids
+        }.getOrDefault(emptySet())
+    }
+
+    /** 方案没编译好时返回原因（给用户看的一句）；编好了只是引擎列表还没刷新时返回 null。 */
+    internal fun missingSchemaReason(build: File, id: String, available: Set<String>,
+        listedOnDisk: Set<String> = deployedSchemaList(build)): String? =
+        missingBuildArtifact(build, id) ?: if (id in available || id in listedOnDisk) null else "不在部署结果的方案列表里"
 
     private fun fileUpdateDigest(digest: java.security.MessageDigest, file: File) {
         if (!file.exists()) return
